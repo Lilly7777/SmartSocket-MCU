@@ -29,6 +29,8 @@ bool AP_On = (known_networks.size() == 0);  //TODO: Add more cases when AP will 
 void setup(){
   Serial.begin(9600);
   if(AP_On){
+    delay(1000);
+    WiFi.mode(WIFI_AP); //Changing Wifi mode to AccessPoint
     WiFi.softAP("SmartSocket");
     server.on("/", rootHandler);
     server.on("/process-info", processInfoHandler); 
@@ -37,7 +39,7 @@ void setup(){
 
   }else{
     delay(1000); // Wait for one second before trying to connect
-    WiFi.softAPdisconnect(true); //Make sure AP is turned off
+    WiFi.mode(WIFI_STA);  //Changing Wifi mode to Station
     
     /* Debug */
     Serial.println("Known networks list is not empty! Trying to connect to a known network...");

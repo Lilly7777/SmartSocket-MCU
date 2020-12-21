@@ -17,7 +17,7 @@ const char index_page[] PROGMEM = R"=====(
       <div class="center">
          <h2>Welcome!</h2>
          <h3>Enter your WiFi's credentials</h3>
-         <form action="/process" method="get">
+         <form action="/process-info" method="get">
             <label for="label_ssid">SSID:</label><br>
             <input type="text" id="input_ssid" name="input_ssid"><br>
             <label for="label_pswd">Password:</label><br>
@@ -26,6 +26,18 @@ const char index_page[] PROGMEM = R"=====(
          </form>
       </div>
    </body>
+</html>
+
+)=====";
+
+const char process_info_page[] PROGMEM = R"=====(
+<!DOCTYPE html>
+<html>
+   <head>
+      <script>
+         window.alert("Device restarting");
+      </script>
+   </head>
 </html>
 
 )=====";

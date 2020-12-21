@@ -31,6 +31,7 @@ void setup(){
   if(AP_On){
     WiFi.softAP("SmartSocket");
     server.on("/", rootHandler);
+    server.on("/process-info", processInfoHandler); 
     server.begin();
     Serial.println("Web server started!");
 
@@ -59,6 +60,24 @@ void loop() {
 
 void rootHandler() {
   server.send(200, "text/html", index_page);
+}
+
+void processInfoHandler(){
+ if(server.args()== 2){
+  String input_ssid = server.arg("input_ssid"); 
+  String input_pswd = server.arg("input_pswd"); 
+
+  Serial.println("Information read from HTML form!");
+  Serial.print("SSID: ");
+  Serial.println(input_ssid);
+
+  Serial.print("Password: ");
+  Serial.println(input_pswd);
+  server.send(200, "text/html", process_info_page);
+ }else{
+  Serial.println("None or more than 2 arguments were given.");
+  //TODO: Redirect and valid info filter.
+ }
 }
 
 /*

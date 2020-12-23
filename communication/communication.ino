@@ -26,6 +26,21 @@ ESP8266WebServer server(80);
 
 bool AP_On = (known_networks.size() == 0);  //TODO: Add more cases when AP will be on
 
+int connect_to_wifi(const Network& network){
+  WiFi.begin(network.ssid, network.password);
+  int counter = 0;
+  while (WiFi.status() != WL_CONNECTED && counter < 12){ 
+    counter++;
+    delay(1000);
+    Serial.print('*');
+  }
+  if(WiFi.status() == WL_CONNECTED){
+    return 1;
+  }else{
+    return 0;
+  }
+}
+
 void setup(){
   Serial.begin(9600);
   if(AP_On){

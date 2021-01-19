@@ -1,6 +1,10 @@
 # Prerequisites
 *.d
 
+# IDE Generated
+.vscode/
+.settings/
+
 # Compiled Object files
 *.slo
 *.lo

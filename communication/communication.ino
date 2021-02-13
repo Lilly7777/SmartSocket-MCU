@@ -13,18 +13,21 @@
 
 #define RESET_BUTTON        13    // D7
 
-#define KNOWN_NETWORKS_MAX   5
-
 typedef struct network_t{
     String ssid;
     String password;
+    network_t(){}
+    network_t(String ssid_, String password_){
+      ssid = ssid_;
+      password = password_; 
+    }
 } Network;
 
 std::vector<Network> known_networks;
 
 ESP8266WebServer server(80);
 
-bool AP_On = (known_networks.size() == 0);  //TODO: Add more cases when AP will be on
+bool AP_On = (known_networks.size() == 0);
 
 int connect_to_wifi(const Network& network){
   WiFi.begin(network.ssid, network.password);
@@ -43,7 +46,9 @@ int connect_to_wifi(const Network& network){
 
 void setup(){
   Serial.begin(9600);
-  if(AP_On){
+  AP_On = (known_networks.size() == 0);
+  delay(1000);
+  if(AP_On == true){
     delay(1000);
     WiFi.mode(WIFI_AP); //Changing Wifi mode to AccessPoint
     WiFi.softAP("SmartSocket");
@@ -51,7 +56,6 @@ void setup(){
     server.on("/process-info", processInfoHandler); 
     server.begin();
     Serial.println("Web server started!");
-
   }else{
     delay(1000); // Wait for one second before trying to connect
     WiFi.mode(WIFI_STA);  //Changing Wifi mode to Station
@@ -59,18 +63,22 @@ void setup(){
     /* Debug */
     Serial.println("Known networks list is not empty! Trying to connect to a known network...");
     /* end Debug */
-    
+    if(connect_to_wifi(known_networks[0]) == 1){
+      Serial.println("Connected to the WiFi network!");
+      Serial.println(known_networks[0].ssid);
+      Serial.println(WiFi.localIP());
+    }else{
+      Serial.println("Connection failed!");  
+    }
   }
   
   /* Debug */
   Serial.println("MCU started successfully!");
-  Serial.println(WiFi.softAPIP());
-  Serial.println(AP_On);
   /* end Debug */
 }
 
 void loop() {
-    if(AP_On){
+    if(AP_On == true){
      server.handleClient();
     }
 }
@@ -90,7 +98,12 @@ void processInfoHandler(){
 
   Serial.print("Password: ");
   Serial.println(input_pswd);
-  server.send(200, "text/html", process_info_page);
+
+  known_networks.push_back(Network(input_ssid, input_pswd));
+  delay(1000);
+  server.send(200, "text/html", index_page);
+  delay(1000);
+  setup();
  }else{
   Serial.println("None or more than 2 arguments were given.");
   //TODO: Redirect and valid info filter.

@@ -1,5 +1,6 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
+#include <PubSubClient.h>
 #include <WiFiClient.h>
 
 #include "WebPages.h"
@@ -9,9 +10,14 @@
 #define LED_STATE_RED        5    // D1
 #define LED_STATE_GREEN      4    // D2
 
-#define RELAY_COM           14    // D5
+#define RELAY_COM           D5
 
 #define RESET_BUTTON        13    // D7
+
+#define MQTT_SERVER_ADDRESS ""
+#define MQTT_PORT 0
+#define MQTT_USER ""
+#define MQTT_PASSWORD ""
 
 typedef struct network_t{
     String ssid;
@@ -26,6 +32,9 @@ typedef struct network_t{
 std::vector<Network> known_networks;
 
 ESP8266WebServer server(80);
+
+WiFiClient wifi_client;
+PubSubClient client(wifi_client);
 
 bool AP_On = (known_networks.size() == 0);
 
@@ -46,6 +55,7 @@ int connect_to_wifi(const Network& network){
 
 void setup(){
   Serial.begin(9600);
+  pinMode(RELAY_COM, OUTPUT);
   AP_On = (known_networks.size() == 0);
   delay(1000);
   if(AP_On == true){
@@ -67,6 +77,28 @@ void setup(){
       Serial.println("Connected to the WiFi network!");
       Serial.println(known_networks[0].ssid);
       Serial.println(WiFi.localIP());
+
+      delay(1000);    
+      
+      client.setServer(MQTT_SERVER_ADDRESS, MQTT_PORT);
+      client.setCallback(callback);
+      
+      while (!client.connected()) {
+      Serial.println("Connecting to MQTT...");
+  
+      if (client.connect("ClientID", MQTT_USER, MQTT_PASSWORD )) {
+  
+        Serial.println("Connected to the MQTT Broker.");  
+  
+      } else {
+        Serial.print("Connectiong to MQTT failed. Error code: ");
+        Serial.print(client.state());
+        delay(2000);
+      }
+      client.subscribe("topic");
+  }
+
+
     }else{
       Serial.println("Connection failed!");  
     }
@@ -81,6 +113,7 @@ void loop() {
     if(AP_On == true){
      server.handleClient();
     }
+    client.loop();
 }
 
 void rootHandler() {
@@ -120,4 +153,33 @@ void change_state_led(int R_VALUE, int G_VALUE, int B_VALUE){
   analogWrite(R_VALUE, R_VALUE);
   analogWrite(G_VALUE, G_VALUE);
   analogWrite(B_VALUE, B_VALUE);
+}
+
+void callback(char* topic, byte* payload, unsigned int length) {
+  Serial.println("-----------------------");
+  Serial.print("Message arrived in topic: ");
+  Serial.println(topic);
+ 
+  Serial.print("Message:");
+  
+  String payload_string;
+
+  for (int i = 0; i < length; i++) {
+    payload_string += String((char)payload[i]);
+  }
+ Serial.print(payload_string);
+
+ if(payload_string == "1"){
+    turn_relay(HIGH);
+ }else if(payload_string == "0"){
+    turn_relay(LOW);
+  }
+ 
+  Serial.println();
+  Serial.println("-----------------------");
+ 
+}
+
+void turn_relay(bool state){
+  digitalWrite(RELAY_COM, state);
 }

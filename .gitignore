@@ -42,6 +42,7 @@
 *.kicad_pcb-bak
 *.kicad_sch-bak
 *.kicad_prl
+*.pro
 *~
 _autosave-*
 *.tmp

@@ -1,3 +1,6 @@
+#include <ESPFlash.h>
+#include <ESPFlashCounter.h>
+#include <ESPFlashString.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <PubSubClient.h>
@@ -7,10 +10,10 @@
 
 #include <vector>
 
-#define LED_STATE_RED       D1
-#define LED_STATE_GREEN     D2
+#define LED_STATE_RED       D5
+#define LED_STATE_GREEN     D6
 
-#define RELAY_COM           D5
+#define RELAY_COM           4
 
 #define RESET_BUTTON        D7
 
@@ -18,6 +21,8 @@
 #define MQTT_PORT 0
 #define MQTT_USER ""
 #define MQTT_PASSWORD ""
+
+#define DEVICE_UID ""
 
 typedef struct network_t{
     String ssid;
@@ -31,12 +36,19 @@ typedef struct network_t{
 
 std::vector<Network> known_networks;
 
+Network network;
+
 ESP8266WebServer server(80);
 
 WiFiClient wifi_client;
 PubSubClient client(wifi_client);
 
-bool AP_On = (known_networks.size() == 0);
+ESPFlash<int> relay_status_eeprom("/relaystatus");
+ESPFlashString ssid_eeprom("/ssid");
+ESPFlashString password_eeprom("/passwd");
+
+int relay_status = 0;
+bool AP_On = (network.ssid == 0 && network.password == 0);
 
 int connect_to_wifi(const Network& network){
   WiFi.begin(network.ssid, network.password);
@@ -55,11 +67,26 @@ int connect_to_wifi(const Network& network){
 
 void setup(){
   Serial.begin(9600);
+  delay(10);
   pinMode(RELAY_COM, OUTPUT);
   pinMode(LED_STATE_GREEN, OUTPUT);
   pinMode(LED_STATE_RED, OUTPUT);
   pinMode(RESET_BUTTON, INPUT);
-  AP_On = (known_networks.size() == 0);
+  delay(10);
+  network.ssid = ssid_eeprom.get();
+  network.password = password_eeprom.get();
+  
+  relay_status = relay_status_eeprom.get();
+     Serial.print("Relay status AT START: ");
+     Serial.println(relay_status);
+  if(relay_status != 1){ //first ever turning on
+    relay_status_eeprom.set(0);
+    relay_status = relay_status_eeprom.get();
+  }
+  turn_relay(relay_status);
+  change_state_led(255,20);
+
+  AP_On = (network.ssid == 0 && network.password == 0);
   delay(1000);
   if(AP_On == true){
     change_state_led(255,20);
@@ -73,61 +100,50 @@ void setup(){
   }else{
     delay(1000); // Wait for one second before trying to connect
     WiFi.mode(WIFI_STA);  //Changing Wifi mode to Station
-    
-    /* Debug */
     Serial.println("Known networks list is not empty! Trying to connect to a known network...");
-    /* end Debug */
-    if(connect_to_wifi(known_networks[0]) == 1){
-      Serial.println("Connected to the WiFi network!");
-      //change_state_led(0,45);
-      Serial.println(known_networks[0].ssid);
-      Serial.println(WiFi.localIP());
-
-      delay(1000);    
+    if(connect_to_wifi(network) == 1){
+        Serial.println("Connected to the WiFi network!");
+        Serial.println(network.ssid);
+        Serial.println(WiFi.localIP());
+        delay(1000);    
+        
+        client.setServer(MQTT_SERVER_ADDRESS, MQTT_PORT);
+        client.setCallback(callback);
+        
+        while (!client.connected()) {
+          Serial.println("Connecting to MQTT...");
       
-      client.setServer(MQTT_SERVER_ADDRESS, MQTT_PORT);
-      client.setCallback(callback);
-      
-      while (!client.connected()) {
-      Serial.println("Connecting to MQTT...");
-  
-      if(client.connect("ESP8266Client", MQTT_USER, MQTT_PASSWORD )) {
-        Serial.println("Connected to the MQTT Broker.");  
-      }else {        
-        change_state_led(255,0);
-        Serial.print("Connectiong to MQTT failed. Error code: ");
-        Serial.print(client.state());
-        delay(2000);
-      }
-      client.subscribe("esp/test");
-      }
-
-
+          if(client.connect("ESP8266Client", MQTT_USER, MQTT_PASSWORD )) {
+            Serial.println("Connected to the MQTT Broker.");  
+          }else {        
+            Serial.print("Connectiong to MQTT failed. Error code: ");
+            Serial.print(client.state());
+            delay(2000);
+          }
+          String topic = String("socket/") + String(DEVICE_UID);
+          client.subscribe((char*) topic.c_str());
+        
+        }
     }else{
-      Serial.println("Connection failed!");  
+        Serial.println("Connection failed!");  
+    }
+    if(relay_status == 0){
       change_state_led(255,0);
+    }else if(relay_status == 1){
+      change_state_led(0,45);
     }
   }
   
-  /* Debug */
   Serial.println("MCU started successfully!");
-  //change_state_led(0,45);
-  /* end Debug */
+
 }
 
 void loop() {
     if(AP_On == true){
      server.handleClient();
-      /*change_state_led(255,0);
-    delay(1000);
-    change_state_led(255,20);
-    delay(1000);
-    change_state_led(0,45);
-    delay(1000);*/
     }
     client.loop();
     reset_esp();
-    
 }
 
 void rootHandler() {
@@ -145,15 +161,19 @@ void processInfoHandler(){
 
   Serial.print("Password: ");
   Serial.println(input_pswd);
-
-  known_networks.push_back(Network(input_ssid, input_pswd));
+  
+  ssid_eeprom.set(input_ssid);
+  network.ssid = ssid_eeprom.get();
+  delay(200);
+  password_eeprom.set(input_pswd);
+  network.ssid = password_eeprom.get();
+  
   delay(1000);
   server.send(200, "text/html", index_page);
   delay(1000);
   setup();
  }else{
   Serial.println("None or more than 2 arguments were given.");
-  //TODO: Redirect and valid info filter.
  }
 }
 
@@ -175,21 +195,43 @@ void callback(char* topic, byte* payload, unsigned int length) {
  
   Serial.print("Message:");
   
-  String payload_string;
+  String payload_string = "";
 
   for (int i = 0; i < length; i++) {
     payload_string += String((char)payload[i]);
   }
- Serial.print(payload_string);
 
- if(payload_string == "1"){
-    turn_relay(HIGH);
- }else if(payload_string == "0"){
-    turn_relay(LOW);
-  }
- 
+  Serial.print(payload_string);
   Serial.println();
   Serial.println("-----------------------");
+
+ if(payload_string == "GET"){
+  String answer = "DEVICE-GET " + String(relay_status);
+  char topicCopy [strlen(topic)+1];
+  strcpy (topicCopy, topic);
+  client.publish(topicCopy, (char*) answer.c_str());
+ }
+ 
+ if(payload_string.substring(0, 3) == "SET"){
+  bool flag_to_set = false;
+   if(payload_string.endsWith("1")){
+    turn_relay(HIGH);
+    flag_to_set = true;
+  }else if(payload_string.endsWith("0")){
+    flag_to_set = true;
+    turn_relay(LOW);
+  }
+  String answer = "";
+  if(flag_to_set == true){
+    answer = "DEVICE-SET " + String(relay_status);
+  }else{
+    answer = "DEVICE-SET ERROR";
+   }
+   char topicCopy [strlen(topic)+1];
+   strcpy (topicCopy, topic);
+   client.publish(topicCopy, (char*) answer.c_str());
+  
+ }
  
 }
 
@@ -200,8 +242,12 @@ void reset_esp(){
   if(buttonState == HIGH){
       counter++;
       if(counter == 1){
-        //Serial.println("BUTTOONN");
-         known_networks.clear();
+         ssid_eeprom.reset();
+         password_eeprom.reset();
+         relay_status_eeprom.set(0);
+         network.ssid = ssid_eeprom.get();
+         network.password = password_eeprom.get();
+         relay_status = relay_status_eeprom.get();
          ESP.restart();
          delay(200);
        }
@@ -212,5 +258,12 @@ void reset_esp(){
 }
 
 void turn_relay(bool state){
+  relay_status_eeprom.set(state);
+  relay_status = relay_status_eeprom.get();
   digitalWrite(RELAY_COM, state);
+  if(relay_status == 0){
+    change_state_led(255,0);
+  }else if(relay_status == 1){
+    change_state_led(0,45);
+  }
 }
